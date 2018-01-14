@@ -1,3 +1,5 @@
+#include <iostream>
+
 //
 //  main.cpp
 //  fang
@@ -39,7 +41,7 @@ public:
             vecHouseSize.push_back(fSize);
             sort(vecHouseSize.begin(), vecHouseSize.end());
         }
-
+        
         mapHouseList[fSize] = strPos;
     }
     
@@ -53,7 +55,7 @@ public:
         {
             return false;
         }
-
+        
         strPos = it->second;
         
         return true;
@@ -81,35 +83,32 @@ public:
 class CMyHousePlan
 {
 private:
-    CZLoad* m_pConf;
     bool bInitFlag;
     CMyHouseType oHouseType;
     
     double fErrSize;
-    double fMySize;
+    double fMyArea;
     uint32_t u32MyNum;
     
     vector< vector<double> > vecResult;
-
+    
     
 public:
-    CMyHousePlan(string strConf) : m_pConf(NULL), bInitFlag(false)
+    CMyHousePlan(string strConf) : bInitFlag(false)
     {
         Init(strConf);
     }
     
     ~CMyHousePlan()
     {
-        if(m_pConf) delete m_pConf;
-        m_pConf = NULL;
+
     }
     
-    void Done(double _fErrSize, double _fMySize, uint32_t _u32MyNum, uint32_t u32MaxSize, uint32_t u32MinSize)
+    void Done(double _fErrSize, double _fMyArea, uint32_t _u32MyNum, uint32_t u32MaxSize, uint32_t u32MinSize)
     {
         if(!bInitFlag) return;
         
-        Store(_fErrSize, _fMySize, _u32MyNum);
-        Choose();
+        Choose(_fErrSize, _fMyArea, _u32MyNum);
         Order();
         Show(u32MaxSize, u32MinSize);
     }
@@ -117,85 +116,183 @@ public:
 private:
     bool Init(string strConf)
     {
-        m_pConf = new CZLoad(strConf);
+        CZLoad oZload(strConf);
+        bInitFlag = false;
         
         vector< vector<string> > vecConfData;
-        if(false == m_pConf->Read(vecConfData))
+        if(oZload.Read(vecConfData))
         {
-            bInitFlag = false;
-            return false;
-        }
-        
-        for(int i=0; i<vecConfData.size(); i++)
-        {
-            if(vecConfData[i].size() < 2)
+            for(int i=0; i<vecConfData.size(); i++)
             {
-                return false;
+                double fSize = atof(vecConfData[i][0].c_str());
+                string strPos = vecConfData[i][1];
+                
+                oHouseType.Add(fSize, strPos);
             }
             
-            double fSize = atof(vecConfData[i][0].c_str());
-            string strPos = vecConfData[i][1];
-            
-            oHouseType.Add(fSize, strPos);
+            bInitFlag = true;
         }
         
-        bInitFlag = true;
-        
-        return true;
+        return bInitFlag;
     }
     
-    void Store(double _fErrSize, double _fMySize, uint32_t _u32MyNum)
+    void Choose(double _fErrSize, double _fMyArea, uint32_t _u32MyNum)
     {
         fErrSize = _fErrSize;
-        fMySize = _fMySize;
+        fMyArea = _fMyArea;
         u32MyNum = _u32MyNum;
-    }
-    
-    void Choose()
-    {
+        
         vecResult.clear();
         
         for(int i=oHouseType.Size() - 1; i>=0; i--)
         {
             uint32_t u32HouseNum = 0;
-            double fSumSize = 0;
+            double fSumArea = 0;
             vector<double> vecPlan;
             
-            GetOne(i, u32HouseNum, fSumSize,vecPlan);
+            _GetOne(i, u32HouseNum, fSumArea, vecPlan);
         }
     }
     
-    int GetOne(int i, uint32_t u32HouseNum, double fSumSize, vector<double> vecPlan)
+    int isRight(double fTotleArea, double fSumArea)
     {
-        u32HouseNum++;
-        fSumSize += oHouseType.Index(i);
-        vecPlan.push_back(oHouseType.Index(i));
+        double fLastArea = fTotleArea - fSumArea;
 
-        
-        if(i < 0)
+        if(fabs(fLastArea) <= fErrSize )
         {
-            return 2;
-        }
-        
-        if(u32HouseNum > u32MyNum)
-        {
-            return 1;
-        }
-        
-        if(u32HouseNum == u32MyNum && fabs(fMySize - fSumSize) <= fErrSize )
-        {
-            vecPlan.push_back(fMySize - fSumSize);
-            vecResult.push_back(vecPlan);
             return 0;
         }
         
-        for(int j=i; j>=0; j--)
+        if(fLastArea < 0)
         {
-            GetOne(j, u32HouseNum, fSumSize, vecPlan);
+            return -1;
         }
         
+        if(fLastArea > 0)
+        {
+            return 1;
+        }
+    }
+    
+    void GetLastTwo(int i, double fLastArea, vector<double> vecPlan)
+    {
+        int beg = 0;
+        int end = i;
+        while(beg <= end)
+        {
+            int ret = isRight(fLastArea, oHouseType.Index(beg) + oHouseType.Index(end));
+            
+            if(ret == 0)
+            {
+                double fDiff = fLastArea - (oHouseType.Index(beg) + oHouseType.Index(end));
+
+                vecPlan.push_back(oHouseType.Index(end));
+                vecPlan.push_back(oHouseType.Index(beg));
+                vecPlan.push_back(fLastArea - oHouseType.Index(beg) - oHouseType.Index(end));
+
+                vecResult.push_back(vecPlan);
+
+                vecPlan.pop_back();
+                vecPlan.pop_back();
+                vecPlan.pop_back();
+
+                if(fDiff > 0)
+                    beg++;
+                else
+                    end--;
+
+                continue;
+            }
+            
+            if(ret < 0)
+            {
+                end--;
+                continue;
+            }
+            
+            if(ret > 0)
+            {
+                beg++;
+                continue;
+            }
+        }
         
-        return -1;
+        if(0 == isRight(fLastArea, oHouseType.Index(beg) + oHouseType.Index(beg)))
+        {
+            vecPlan.push_back(oHouseType.Index(beg));
+            vecPlan.push_back(oHouseType.Index(beg));
+            vecPlan.push_back(fLastArea - oHouseType.Index(beg) - oHouseType.Index(beg));
+
+            vecResult.push_back(vecPlan);
+
+            vecPlan.pop_back();
+            vecPlan.pop_back();
+            vecPlan.pop_back();
+        }
+
+        if(0 == isRight(fLastArea, oHouseType.Index(end) + oHouseType.Index(end)))
+        {
+            vecPlan.push_back(oHouseType.Index(end));
+            vecPlan.push_back(oHouseType.Index(end));
+            vecPlan.push_back(fLastArea - oHouseType.Index(end) - oHouseType.Index(end));
+
+            vecResult.push_back(vecPlan);
+
+            vecPlan.pop_back();
+            vecPlan.pop_back();
+            vecPlan.pop_back();
+        }
+    }
+    
+
+    void _GetOne(int i, uint32_t u32HouseNum, double fSumArea, vector<double> vecPlan)
+    {
+        u32HouseNum++;
+        fSumArea += oHouseType.Index(i);
+        vecPlan.push_back(oHouseType.Index(i));
+
+        if(i < 0 || u32HouseNum > u32MyNum)
+        {
+            return;
+        }
+
+
+        if(u32HouseNum == u32MyNum && fabs(fMyArea - fSumArea) <= fErrSize )
+        {
+            vecPlan.push_back(fMyArea - fSumArea);
+            vecResult.push_back(vecPlan);
+            return;
+        }
+               
+        
+        for(int j=i; j>=0; j--)
+        {
+            _GetOne(j, u32HouseNum, fSumArea, vecPlan);
+        }
+    }
+
+
+    void GetOne(int i, uint32_t u32HouseNum, double fSumArea, vector<double> vecPlan)
+    {
+        if(i < 0 || u32HouseNum > u32MyNum)
+        {
+            return;
+        }
+        
+        u32HouseNum++;
+        fSumArea += oHouseType.Index(i);
+        vecPlan.push_back(oHouseType.Index(i));
+        
+        if(u32HouseNum == (u32MyNum - 2))
+        {
+            GetLastTwo(i, fMyArea - fSumArea, vecPlan);
+            return;
+        }
+
+        for(int j=i; j>=0; j--)
+        {
+            GetOne(j, u32HouseNum, fSumArea, vecPlan);
+        }
     }
     
     void Order()
@@ -211,9 +308,7 @@ private:
                     fMax = j;
                 }
             }
-            
-            
-            
+  
             vector<double> vecTmp = vecResult[i];
             vecResult[i] = vecResult[fMax];
             vecResult[fMax] = vecTmp;
@@ -229,11 +324,11 @@ private:
             bool bFlag = true;
             for (int j = 0; j<vecResult[i].size()-1; j++)
             {
-               if(FilterMax(vecResult[i][j], u32MaxSize) || FilterMin(vecResult[i][j], u32MinSize))
-               {
-                   bFlag = false;
-                   break;
-               }
+                if(FilterMax(vecResult[i][j], u32MaxSize) || FilterMin(vecResult[i][j], u32MinSize))
+                {
+                    bFlag = false;
+                    break;
+                }
             }
             
             if(bFlag == false)
@@ -247,7 +342,6 @@ private:
             {
                 int k = (j + vecResult[i].size() - 1) % vecResult[i].size();
                 
-   
                 if(k == vecResult[i].size() - 1)
                 {
                     zjPlan.Set("err", ToString(vecResult[i][k])).End();
@@ -287,7 +381,7 @@ private:
         {
             return false;
         }
-
+        
         return false;
     }
     
@@ -321,7 +415,7 @@ private:
 
 int main(int argc, const char * argv[]) {
     // insert code here...
-
+    
     if(argc < 7)
     {
         cout << "#err! miss args! Usage: " << argv[0] << " [config file] [max error] [totle area] [house num] [max area] [min area]" << endl;
@@ -329,18 +423,17 @@ int main(int argc, const char * argv[]) {
     }
     
     string strConfPath = argv[1];
-    double fErrSize=atof(argv[2]);
-    double fMySize=atof(argv[3]);
-    uint32_t u32MyNum=atoi(argv[4]);
-    uint32_t u32MaxSize=atoi(argv[5]);
-    uint32_t u32MinSize=atoi(argv[6]);
+    double fErrSize = atof(argv[2]);
+    double fMyArea = atof(argv[3]);
+    uint32_t u32MyNum = atoi(argv[4]);
+    uint32_t u32MaxSize = atoi(argv[5]);
+    uint32_t u32MinSize = atoi(argv[6]);
     
     vector<double> vecFilter;
     
     CMyHousePlan oHousePlan(strConfPath);
-    oHousePlan.Done(fErrSize, fMySize, u32MyNum, u32MaxSize, u32MinSize);
+    oHousePlan.Done(fErrSize, fMyArea, u32MyNum, u32MaxSize, u32MinSize);
     
     
     return 0;
 }
-
